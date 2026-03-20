@@ -1,0 +1,31 @@
+# Secrets and user config
+.env
+settings.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Logs
+logs/
+meshtastic_bot.log
+
+# TTS model files (large, downloaded on first use)
+*.onnx
+*.bin
+
+# Runtime data
+data/
+
+# Internal dev docs
+CHANGELOG.md
+TEST_AI_CONTEXT.md
+
+# IDE / tools
+.claude/
+*.tmp*

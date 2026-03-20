@@ -1,0 +1,134 @@
+/* MESHMIND Base Styles */
+
+Screen {
+    background: $surface;
+}
+
+/* Main Content Area */
+#main-content {
+    height: 1fr;
+}
+
+#log-panel {
+    width: 1fr;
+    min-width: 40;
+    background: $surface;
+    padding: 0;
+}
+
+#status-panel {
+    width: 26;
+    border: solid $primary;
+    background: $surface;
+    padding: 0;
+    overflow-y: auto;
+    scrollbar-size: 0 0;
+}
+
+/* Log Viewer */
+LogViewer {
+    height: 1fr;
+    border: solid $primary;
+    background: $background;
+}
+
+/* Status Panel */
+.status-label {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+.status-value {
+    color: $text;
+    text-style: bold;
+}
+
+.connected {
+    color: $success;
+}
+
+.disconnected {
+    color: $error;
+}
+
+/* Theme Picker Modal */
+ThemePicker {
+    align: center middle;
+}
+
+#theme-picker-container {
+    width: 50;
+    height: auto;
+    max-height: 80%;
+    background: $panel;
+    border: thick $primary;
+    padding: 1 2;
+}
+
+#theme-picker-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+    width: 100%;
+}
+
+#theme-list {
+    height: auto;
+    max-height: 20;
+    background: $surface;
+    border: solid $primary;
+    padding: 0 1;
+}
+
+#theme-list:focus {
+    border: solid $accent;
+}
+
+#theme-picker-hint {
+    text-align: center;
+    color: $text-muted;
+    margin-top: 1;
+    width: 100%;
+}
+
+/* Voice Picker Modal */
+VoicePicker {
+    align: center middle;
+}
+
+#voice-picker-container {
+    width: 50;
+    height: auto;
+    max-height: 80%;
+    background: $panel;
+    border: thick $primary;
+    padding: 1 2;
+}
+
+#voice-picker-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+    width: 100%;
+}
+
+#voice-list {
+    height: auto;
+    max-height: 20;
+    background: $surface;
+    border: solid $primary;
+    padding: 0 1;
+}
+
+#voice-list:focus {
+    border: solid $accent;
+}
+
+#voice-picker-hint {
+    text-align: center;
+    color: $text-muted;
+    margin-top: 1;
+    width: 100%;
+}

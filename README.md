@@ -4,8 +4,6 @@ An AI-powered Meshtastic bot with a terminal dashboard, built in Python.
 
 MeshMind connects to a Meshtastic LoRa mesh network and provides AI chat, weather forecasts, NOAA alerts, river level monitoring, air quality reports, earthquake alerts, space weather warnings, and more. All managed through a rich terminal UI.
 
-**Note:** Weather, alerts, river monitoring, and air quality use NOAA, USGS, and EPA APIs, which only cover the United States. 
-
 ## About
 
 MeshMind runs as a background service that listens on a Meshtastic mesh channel and responds to user commands and free-form chat messages. It pairs an OpenAI-compatible AI backend with real-time data from NOAA, USGS, Tomorrow.io, Sunrise-Sunset, AirNow, and NOAA SWPC APIs to deliver useful information over the mesh.

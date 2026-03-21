@@ -10,6 +10,9 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Suppress phonemizer word-count-mismatch warnings (triggered by symbols like #)
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
 # Project root for model file resolution
 _PROJECT_ROOT = Path(__file__).parent.parent
 

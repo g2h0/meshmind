@@ -1,12 +1,14 @@
 """MESHMIND Bot - Refactored for TUI integration"""
 
+import json
 import re
 import sys
 import time
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone
+from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
 
 from dotenv import load_dotenv
@@ -26,6 +28,7 @@ from .config import cfg, Config
 from .utils.bbs import BbsBoard, format_age
 
 logger = logging.getLogger(__name__)
+ALERT_STATE_FILE = Path(__file__).parent.parent / "data" / "alert_state.json"
 
 
 class MeshmindBot:
@@ -93,6 +96,9 @@ class MeshmindBot:
         self.last_earthquake_check = None
         self.seen_earthquake_ids = {}
 
+        # Restore persisted alert state (prevents duplicate alerts on restart)
+        self._load_alert_state()
+
         # Chat history
         self.chat_histories: Dict[int, List[Dict[str, str]]] = {}
         self.last_activity: Dict[int, datetime] = {}
@@ -155,6 +161,110 @@ class MeshmindBot:
         """Notify listeners of status change"""
         if self._on_status_change:
             self._on_status_change(self.get_status())
+
+    # ------------------------------------------------------------------ #
+    # Alert state persistence                                              #
+    # ------------------------------------------------------------------ #
+
+    def _load_alert_state(self) -> None:
+        """Restore alert tracking state from disk so restarts don't re-fire alerts."""
+        try:
+            if not ALERT_STATE_FILE.exists():
+                return
+            with open(ALERT_STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+
+            today = datetime.now(cfg.TIMEZONE).date() if cfg.TIMEZONE else date.today()
+
+            # sunrise/sunset sent dates — only restore if same day
+            for event in ("sunrise", "sunset"):
+                d = state.get("alert_sent", {}).get(event)
+                if d:
+                    saved_date = date.fromisoformat(d)
+                    if saved_date == today:
+                        self.alert_sent[event] = saved_date
+
+            # frost alert sent date
+            d = state.get("frost_alert_sent")
+            if d:
+                saved_date = date.fromisoformat(d)
+                if saved_date == today:
+                    self.frost_alert_sent = saved_date
+
+            # flood alert level (string)
+            self.flood_alert_sent = state.get("flood_alert_sent")
+
+            # AQI category
+            self.last_aqi_alert_category = state.get("last_aqi_alert_category", 0)
+
+            # last conditions broadcast
+            ts = state.get("last_conditions_sent")
+            if ts:
+                self._last_conditions_sent = datetime.fromisoformat(ts)
+
+            # Seen IDs (NOAA alerts, storms, earthquakes) — restore with datetime values
+            for attr, key in [
+                ("seen_alert_ids", "seen_alert_ids"),
+                ("seen_storm_events", "seen_storm_events"),
+                ("seen_earthquake_ids", "seen_earthquake_ids"),
+            ]:
+                saved = state.get(key, {})
+                restored = {}
+                for k, v in saved.items():
+                    try:
+                        restored[k] = datetime.fromisoformat(v)
+                    except (ValueError, TypeError):
+                        pass
+                setattr(self, attr, restored)
+
+        except (json.JSONDecodeError, IOError, KeyError, ValueError, TypeError):
+            pass  # corrupted or missing — start fresh
+
+    def _save_alert_state(self) -> None:
+        """Persist alert tracking state to disk."""
+        try:
+            state = {}
+
+            with self.lock:
+                # sunrise/sunset
+                state["alert_sent"] = {
+                    k: v.isoformat() if isinstance(v, date) else None
+                    for k, v in self.alert_sent.items()
+                }
+
+                # frost
+                state["frost_alert_sent"] = (
+                    self.frost_alert_sent.isoformat()
+                    if isinstance(self.frost_alert_sent, date) else None
+                )
+
+                # flood
+                state["flood_alert_sent"] = self.flood_alert_sent
+
+                # AQI
+                state["last_aqi_alert_category"] = self.last_aqi_alert_category
+
+                # last conditions
+                state["last_conditions_sent"] = (
+                    self._last_conditions_sent.isoformat()
+                    if self._last_conditions_sent else None
+                )
+
+                # Seen IDs
+                for attr, key in [
+                    ("seen_alert_ids", "seen_alert_ids"),
+                    ("seen_storm_events", "seen_storm_events"),
+                    ("seen_earthquake_ids", "seen_earthquake_ids"),
+                ]:
+                    state[key] = {
+                        k: v.isoformat() for k, v in getattr(self, attr).items()
+                    }
+
+            ALERT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(ALERT_STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except (IOError, TypeError):
+            pass
 
     def get_status(self) -> Dict[str, Any]:
         """Get current bot status for UI display"""
@@ -1360,6 +1470,8 @@ class MeshmindBot:
             # Send messages outside the lock
             for msg in messages_to_send:
                 self._send_message(msg)
+            if messages_to_send:
+                self._save_alert_state()
 
         except (requests.RequestException, KeyError, ValueError, TypeError, AttributeError) as e:
             self._noaa_consecutive_failures += 1
@@ -1453,6 +1565,7 @@ class MeshmindBot:
             self._send_message(frost_msg)
             with self.lock:
                 self.frost_alert_sent = now.date()
+            self._save_alert_state()
             logger.info(f"Cryogenic hazard advisory transmitted — onset {frost_onset_time}, nadir {min_temp}°F")
 
         except (requests.RequestException, KeyError, ValueError, TypeError, AttributeError) as e:
@@ -1580,6 +1693,7 @@ class MeshmindBot:
         if category <= 1:
             with self.lock:
                 self.last_aqi_alert_category = 0
+            self._save_alert_state()
             return
 
         # Only alert when category escalates
@@ -1592,6 +1706,7 @@ class MeshmindBot:
 
         with self.lock:
             self.last_aqi_alert_category = category
+        self._save_alert_state()
 
     def _check_space_weather(self) -> None:
         """Check planetary K-index and alert on geomagnetic storms (Kp >= 5)."""
@@ -1639,6 +1754,7 @@ class MeshmindBot:
                 with self.lock:
                     if time_tag not in self.seen_storm_events:
                         self.seen_storm_events[time_tag] = datetime.now(timezone.utc)
+            self._save_alert_state()
 
             if first_run:
                 logger.info(f"Heliophysics baseline captured — {len(data) - 1} K-index observations")
@@ -1728,6 +1844,9 @@ class MeshmindBot:
                 alerts_sent += 1
                 if alerts_sent >= 3:
                     break
+
+            if alerts_sent:
+                self._save_alert_state()
 
         except (requests.RequestException, KeyError, ValueError, TypeError, AttributeError) as e:
             logger.error(f"Earthquake check error: {e}")
@@ -1866,6 +1985,9 @@ class MeshmindBot:
             if old_storms:
                 logger.info(f"Storm archive pruned — {len(old_storms)} expired entries cleared")
 
+            if old_alerts or old_eqs or old_storms:
+                self._save_alert_state()
+
         except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Alert cleanup error: {e}")
 
@@ -1917,6 +2039,7 @@ class MeshmindBot:
 
             if alert_msg:
                 self._send_message(alert_msg)
+                self._save_alert_state()
                 logger.info(f"Flood alert sent: {current_level} level at {level:.1f}ft")
 
         except (requests.RequestException, KeyError, ValueError, TypeError, AttributeError) as e:
@@ -1939,6 +2062,7 @@ class MeshmindBot:
                             self._update_sun_times(now.date())
                             with self.lock:
                                 self.alert_sent = {"sunrise": None, "sunset": None}
+                            self._save_alert_state()
                 except Exception as e:
                     logger.error(f"Sun times update error: {e}")
 
@@ -2011,6 +2135,7 @@ class MeshmindBot:
                         self._send_message(base_msg)
                         self.last_hour_check = now.hour
                         self._last_conditions_sent = datetime.now(timezone.utc)
+                        self._save_alert_state()
                         logger.info(f"Environmental telemetry broadcast at {timestamp}")
                     except (requests.RequestException, ValueError, TypeError, AttributeError) as e:
                         logger.error(f"Weather fetch failed: {e}")
@@ -2121,6 +2246,7 @@ class MeshmindBot:
                             self._send_message(msg)
                             with self.lock:
                                 self.alert_sent[event] = now.date()
+                            self._save_alert_state()
                 except Exception as e:
                     logger.error(f"Sunrise/sunset alert error: {e}")
 

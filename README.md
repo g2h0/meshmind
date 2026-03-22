@@ -48,6 +48,8 @@ The terminal interface gives you a live dashboard with a scrolling log viewer, a
 
 ### TUI dashboard
 
+![MeshMind TUI](assets/screenshot.png)
+
 The terminal interface is split into two panels:
 
 - **Log viewer** (left) — color-coded, theme-aware log output with automatic text reflow on resize
@@ -161,6 +163,7 @@ MIT — see [LICENSE](LICENSE) for details.
 ## Project structure
 
 ```
+assets/                  # Screenshots and images
 meshmind.py              # Entry point
 system_prompt.txt        # AI system prompt template
 settings.json            # User configuration (generated)

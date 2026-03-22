@@ -2,6 +2,8 @@
 
 import logging
 from logging.handlers import RotatingFileHandler
+
+from .log_filters import LibraryNoiseFilter
 from pathlib import Path
 
 # Suppress all console logging BEFORE any other imports
@@ -323,6 +325,7 @@ def run_app():
         "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
+    file_handler.addFilter(LibraryNoiseFilter())
     root_logger.addHandler(file_handler)
 
     import sys

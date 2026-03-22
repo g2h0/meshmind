@@ -10,6 +10,7 @@ from textual.widgets import RichLog
 from rich.table import Table
 from rich.text import Text
 
+from ..log_filters import LibraryNoiseFilter
 from ..themes import get_theme
 
 MAX_LOG_ENTRIES = 2000
@@ -87,6 +88,7 @@ class LogViewer(RichLog):
         # Create and attach our custom handler
         self._handler = TUILogHandler(self)
         self._handler.setLevel(logging.DEBUG)
+        self._handler.addFilter(LibraryNoiseFilter())
 
         # Add handler to root logger
         root_logger = logging.getLogger()

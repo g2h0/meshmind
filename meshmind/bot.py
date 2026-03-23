@@ -2227,8 +2227,8 @@ class MeshmindBot:
                                 if moon_phase:
                                     suffix = f" | {moon_phase}"
                                     prefix = f"Sunset @ {event_time.strftime('%I:%M%p')} --- "
-                                    max_forecast = cfg.MAX_BYTE_LIMIT - len(prefix.encode()) - len(suffix.encode())
-                                    trimmed = forecast.encode()[:max_forecast].decode("utf-8", errors="ignore").rstrip()
+                                    max_forecast = cfg.MAX_RESPONSE_LENGTH - len(prefix) - len(suffix)
+                                    trimmed = forecast[:max_forecast].rstrip()
                                     msg = f"{prefix}{trimmed}{suffix}"
                                 else:
                                     msg = f"{event.title()} @ {event_time.strftime('%I:%M%p')} --- {forecast}"
@@ -2237,8 +2237,8 @@ class MeshmindBot:
                                 if daylight_hours:
                                     suffix = f" | {daylight_hours}"
                                     prefix = f"Sunrise @ {event_time.strftime('%I:%M%p')} --- "
-                                    max_forecast = cfg.MAX_BYTE_LIMIT - len(prefix.encode()) - len(suffix.encode())
-                                    trimmed = forecast.encode()[:max_forecast].decode("utf-8", errors="ignore").rstrip()
+                                    max_forecast = cfg.MAX_RESPONSE_LENGTH - len(prefix) - len(suffix)
+                                    trimmed = forecast[:max_forecast].rstrip()
                                     msg = f"{prefix}{trimmed}{suffix}"
                                 else:
                                     msg = f"{event.title()} @ {event_time.strftime('%I:%M%p')} --- {forecast}"

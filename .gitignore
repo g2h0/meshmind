@@ -25,7 +25,6 @@ data/
 # Internal dev docs
 CHANGELOG.md
 TEST_AI_CONTEXT.md
-TODO.md
 
 # IDE / tools
 .claude/

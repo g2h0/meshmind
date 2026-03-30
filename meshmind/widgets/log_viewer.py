@@ -1,7 +1,6 @@
 """MESHMIND Log Viewer Widget"""
 
 import logging
-import queue
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -18,36 +17,25 @@ MAX_LOG_ENTRIES = 2000
 
 
 class TUILogHandler(logging.Handler):
-    """Custom logging handler that queues logs for the TUI LogViewer.
-
-    Uses a non-blocking queue instead of call_from_thread to avoid deadlocks
-    between worker threads (holding locks while logging) and the main thread
-    (acquiring those same locks in StatusPanel polling).
-    """
+    """Custom logging handler that sends logs to the TUI LogViewer"""
 
     def __init__(self, log_viewer: "LogViewer"):
         super().__init__()
         self.log_viewer = log_viewer
-        self._queue: queue.Queue = queue.Queue()
         self.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Queue a log record for the TUI (non-blocking)."""
+        """Emit a log record to the TUI"""
         try:
+            # Format the log message
             msg = self.format(record)
-            self._queue.put_nowait((record.levelname, msg))
+            # Use call_from_thread for thread safety
+            if self.log_viewer.app:
+                self.log_viewer.app.call_from_thread(
+                    self.log_viewer.write_log, record.levelname, msg
+                )
         except Exception:
             self.handleError(record)
-
-    def drain(self) -> list:
-        """Drain all pending log messages. Called from main thread timer."""
-        items = []
-        while True:
-            try:
-                items.append(self._queue.get_nowait())
-            except queue.Empty:
-                break
-        return items
 
 
 class LogViewer(RichLog):
@@ -94,13 +82,6 @@ class LogViewer(RichLog):
     def on_mount(self) -> None:
         """Set up the logging handler when mounted"""
         self._setup_logging()
-        self.set_interval(0.1, self._drain_log_queue)
-
-    def _drain_log_queue(self) -> None:
-        """Drain queued log messages onto the widget (runs on main thread)."""
-        if self._handler:
-            for level, message in self._handler.drain():
-                self.write_log(level, message)
 
     def _setup_logging(self) -> None:
         """Configure logging to output to this widget"""

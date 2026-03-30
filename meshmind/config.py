@@ -222,7 +222,6 @@ class Config:
                 f"?format=application/json"
                 f"&latitude={self.LAT}&longitude={self.LON}"
                 f"&distance={self.AQI_DISTANCE_MILES}"
-                f"&API_KEY={self.AIRNOW_API_KEY}"
             )
         self.NOAA_ALERTS_URL = (
             f"https://api.weather.gov/alerts/active?zone={self.NOAA_ZONE}"

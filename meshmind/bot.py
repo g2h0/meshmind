@@ -2,10 +2,12 @@
 
 import json
 import re
+import socket
 import sys
 import time
 import logging
 import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
@@ -67,6 +69,11 @@ class MeshmindBot:
         self.last_message_time: Optional[datetime] = None
         self.chat_paused = False
         self.reconnect_count = 0
+        self._reconnect_lock = threading.Lock()
+        self._closing_interface = False
+        self._keepalive_stop = threading.Event()
+        self._keepalive_thread: Optional[threading.Thread] = None
+        self._recent_reconnects: deque = deque(maxlen=10)
 
         # Caching for API responses
         self.river_cache = {"level": None, "timestamp": None}
@@ -526,6 +533,23 @@ class MeshmindBot:
 
         return "\n\n".join(sections)
 
+    @staticmethod
+    def _configure_socket(sock: socket.socket) -> None:
+        """Tune the mesh TCP socket for low-latency heartbeat delivery.
+
+        TCP_NODELAY disables Nagle so heartbeat frames ship immediately rather
+        than being coalesced.  OS-level TCP keepalive is intentionally NOT
+        enabled — the ESP32 lwIP stack on Heltec V3 does not reply to TCP
+        keepalive probes, which causes the OS to kill the connection faster
+        than the firmware's own timeout.  Connection liveness is handled by
+        application-level Meshtastic heartbeats instead.
+        """
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            logger.debug("TCP_NODELAY configured on mesh socket")
+        except OSError as e:
+            logger.warning(f"Could not set socket options: {e}")
+
     def _init_connections(self) -> bool:
         """Initialize all connections with proper error handling"""
         try:
@@ -555,6 +579,9 @@ class MeshmindBot:
                 logger.error("Failed to get myInfo from interface")
                 return False
 
+            if self.interface.socket:
+                self._configure_socket(self.interface.socket)
+
             pub.subscribe(self.on_receive, "meshtastic.receive.text")
             pub.subscribe(self.on_node_discovered, "meshtastic.receive.nodeinfo")
             pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
@@ -581,27 +608,128 @@ class MeshmindBot:
             logger.error(f"Connection init failed: {e}")
             return False
 
-    def _reconnect(self) -> bool:
-        """Smart reconnection with power cycling fallback"""
-        self.retry_count += 1
-        logger.warning(f"Mesh link recovery attempt {self.retry_count}/{cfg.MAX_RETRIES}")
-        self._notify_status_change()
+    def _reconnect_interface(self) -> bool:
+        """Reconnect only the mesh radio (skips OpenAI/session/pub.subscribe)."""
+        try:
+            logger.info("Neural cortex initializing")
+            self.interface = TCPInterface(cfg.DEVICE_HOST)
+            if self.interface and self.interface.myInfo:
+                self.my_node_num = self.interface.myInfo.my_node_num
+            else:
+                logger.error("Failed to get myInfo from interface")
+                return False
 
-        if self.interface:
-            try:
-                self.interface.close()
-            except ConnectionError as e:
-                logger.warning(f"Error closing interface during reconnect: {e}")
+            if self.interface.socket:
+                self._configure_socket(self.interface.socket)
 
-        if self._init_connections():
-            with self.lock:
-                self.reconnect_count += 1
-            logger.info("Mesh link reacquired")
-            time.sleep(2)  # Let connection stabilize before sending
+            if hasattr(self.interface, 'nodes') and self.interface.nodes:
+                with self.lock:
+                    self.known_nodes = set(self.interface.nodes.keys())
+                logger.info(f"Mesh topology mapped — {len(self.known_nodes)} nodes acquired")
+
+            logger.info("All subsystems nominal")
+            self.retry_count = 0
+            self._notify_status_change()
             return True
 
-        time.sleep(cfg.RETRY_DELAY)
-        return False
+        except (
+            ConnectionError,
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+        ) as e:
+            logger.error(f"Connection init failed: {e}")
+            return False
+
+    def _start_keepalive(self):
+        """Send periodic heartbeats to keep the mesh connection alive.
+
+        The meshtastic library's built-in heartbeat fires every 300s, which
+        races with the device-side TCP timeout.  A 60s supplemental heartbeat
+        ensures the connection stays healthy between library heartbeats.
+        """
+        self._stop_keepalive()
+        self._keepalive_stop.clear()
+
+        def _loop():
+            while not self._keepalive_stop.wait(60):
+                try:
+                    iface = self.interface
+                    if (iface
+                            and hasattr(iface, "isConnected")
+                            and iface.isConnected.is_set()):
+                        iface.sendHeartbeat()
+                except Exception as e:
+                    logger.debug(f"Heartbeat send failed: {e}")
+
+        self._keepalive_thread = threading.Thread(
+            target=_loop, name="mesh-keepalive", daemon=True,
+        )
+        self._keepalive_thread.start()
+
+    def _stop_keepalive(self):
+        """Stop the keepalive timer."""
+        self._keepalive_stop.set()
+        self._keepalive_thread = None
+
+    def _reconnect(self, blocking=True) -> bool:
+        """Reconnect the mesh radio interface."""
+        acquired = self._reconnect_lock.acquire(blocking=blocking)
+        if not acquired:
+            return False
+        try:
+            if not self.is_running:
+                return False
+
+            # Connection may have been restored while waiting for lock
+            if (self.interface
+                    and hasattr(self.interface, "isConnected")
+                    and self.interface.isConnected.is_set()):
+                return True
+
+            self._stop_keepalive()
+
+            self.retry_count += 1
+            logger.warning(f"Mesh link recovery attempt {self.retry_count}/{cfg.MAX_RETRIES}")
+            self._notify_status_change()
+
+            if self.interface:
+                try:
+                    self._closing_interface = True
+                    self.interface.close()
+                except (ConnectionError, OSError) as e:
+                    logger.warning(f"Error closing interface during reconnect: {e}")
+                    # close() failed partway — the library's _sendDisconnect()
+                    # raised before TCPInterface could clean up the socket and
+                    # signal the reader thread.  Do it manually so the device
+                    # doesn't keep a zombie connection that eats a client slot.
+                    try:
+                        self.interface._wantExit = True
+                        if self.interface.socket:
+                            self.interface.socket.close()
+                            self.interface.socket = None
+                    except Exception:
+                        pass
+                finally:
+                    self._closing_interface = False
+
+            # Give the device time to tear down the old connection before
+            # we open a new one (ESP32 has very few client slots).
+            time.sleep(1)
+
+            if self._reconnect_interface():
+                with self.lock:
+                    self.reconnect_count += 1
+                logger.info("Mesh link reacquired")
+                self._start_keepalive()
+                time.sleep(2)  # Let connection stabilize before sending
+                return True
+
+            time.sleep(cfg.RETRY_DELAY)
+            return False
+        finally:
+            self._reconnect_lock.release()
 
     def _truncate_message(self, text: str) -> str:
         """Safely truncate message to byte limit while preserving UTF-8 boundaries"""
@@ -891,8 +1019,46 @@ class MeshmindBot:
 
     def _on_connection_lost(self, interface, topic=None):
         """Handle meshtastic connection lost event."""
+        if self._closing_interface:
+            return  # Intentional close during reconnect — ignore
         logger.warning("Mesh radio link severed")
         self._notify_status_change()
+        if self.is_running:
+            threading.Thread(
+                target=self._background_reconnect,
+                name="reconnect-on-lost",
+                daemon=True,
+            ).start()
+
+    def _background_reconnect(self):
+        """Attempt reconnection with backoff on failure.
+
+        The circuit breaker only fires when reconnection *fails* repeatedly,
+        not when the link drops and recovers quickly.  Frequent successful
+        reconnects are a symptom — delaying them only makes it worse.
+        """
+        delay = 5
+        max_delay = 60
+        consecutive_failures = 0
+
+        while self.is_running:
+            time.sleep(delay)
+            if not self.is_running:
+                break
+            if (self.interface
+                    and hasattr(self.interface, "isConnected")
+                    and self.interface.isConnected.is_set()):
+                return
+            if self._reconnect(blocking=False):
+                self._recent_reconnects.append(time.time())
+                return
+            # Only escalate delay when reconnection *fails*
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                delay = min(delay * 2, max_delay)
+                logger.warning(
+                    f"Mesh link recovery stalled — next attempt in {delay}s"
+                )
 
     def _get_api_stats(self) -> str:
         """Get API performance statistics"""
@@ -1643,6 +1809,7 @@ class MeshmindBot:
         try:
             resp = self._session.get(
                 cfg.AIRNOW_API_URL,
+                params={"API_KEY": cfg.AIRNOW_API_KEY},
                 headers={"User-Agent": "MeshtasticBot"},
                 timeout=cfg.AQI_API_TIMEOUT,
             )
@@ -1674,7 +1841,10 @@ class MeshmindBot:
             return result
 
         except (requests.RequestException, KeyError, ValueError, TypeError, AttributeError) as e:
-            logger.error(f"AQI data error: {e}")
+            if isinstance(e, requests.RequestException):
+                logger.error(f"AQI data error: {type(e).__name__}")
+            else:
+                logger.error(f"AQI data error: {e}")
             self._record_api_call(success=False, response_time=time.time() - start_time, error=e, endpoint="airnow")
             return None
 
@@ -2288,6 +2458,8 @@ class MeshmindBot:
         self._periodic_thread = threading.Thread(target=self._periodic_tasks, daemon=True)
         self._periodic_thread.start()
 
+        self._start_keepalive()
+
         logger.info("All systems online — MeshMind operational")
         self._notify_status_change()
         return True
@@ -2296,15 +2468,19 @@ class MeshmindBot:
         """Stop the bot"""
         logger.info("Initiating shutdown sequence...")
         self.is_running = False
+        self._stop_keepalive()
 
         if self._periodic_thread and self._periodic_thread.is_alive():
             self._periodic_thread.join(timeout=5)
 
         if self.interface:
             try:
+                self._closing_interface = True
                 self.interface.close()
             except Exception as e:
                 logger.warning(f"Mesh link disconnect error during shutdown: {e}")
+            finally:
+                self._closing_interface = False
 
         self._notify_status_change()
         logger.info("All systems dark — MeshMind offline")

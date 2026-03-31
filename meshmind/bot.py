@@ -535,18 +535,15 @@ class MeshmindBot:
 
     @staticmethod
     def _configure_socket(sock: socket.socket) -> None:
-        """Tune the mesh TCP socket for low-latency heartbeat delivery.
+        """Tune the mesh TCP socket for low-latency delivery.
 
-        TCP_NODELAY disables Nagle so heartbeat frames ship immediately rather
-        than being coalesced.  OS-level TCP keepalive is intentionally NOT
-        enabled — the ESP32 lwIP stack on Heltec V3 does not reply to TCP
-        keepalive probes, which causes the OS to kill the connection faster
-        than the firmware's own timeout.  Connection liveness is handled by
-        application-level Meshtastic heartbeats instead.
+        TCP_NODELAY disables Nagle so frames ship immediately.
+        SO_KEEPALIVE is NOT enabled — the ESP32 lwIP stack RSTs the
+        connection when it receives TCP keepalive probes.
         """
         try:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            logger.debug("TCP_NODELAY configured on mesh socket")
+            logger.info("Socket configured: TCP_NODELAY")
         except OSError as e:
             logger.warning(f"Could not set socket options: {e}")
 
@@ -645,23 +642,23 @@ class MeshmindBot:
     def _start_keepalive(self):
         """Send periodic heartbeats to keep the mesh connection alive.
 
-        The meshtastic library's built-in heartbeat fires every 300s, which
-        races with the device-side TCP timeout.  A 60s supplemental heartbeat
-        ensures the connection stays healthy between library heartbeats.
+        30s interval keeps traffic flowing to prevent idle disconnects.
         """
         self._stop_keepalive()
         self._keepalive_stop.clear()
 
         def _loop():
-            while not self._keepalive_stop.wait(60):
+            while not self._keepalive_stop.wait(30):
                 try:
                     iface = self.interface
                     if (iface
                             and hasattr(iface, "isConnected")
                             and iface.isConnected.is_set()):
                         iface.sendHeartbeat()
+                    else:
+                        logger.warning("Heartbeat skipped — interface not connected")
                 except Exception as e:
-                    logger.debug(f"Heartbeat send failed: {e}")
+                    logger.warning(f"Heartbeat send failed: {e}")
 
         self._keepalive_thread = threading.Thread(
             target=_loop, name="mesh-keepalive", daemon=True,
@@ -694,35 +691,41 @@ class MeshmindBot:
             logger.warning(f"Mesh link recovery attempt {self.retry_count}/{cfg.MAX_RETRIES}")
             self._notify_status_change()
 
-            if self.interface:
+            old_interface = self.interface
+            if old_interface:
                 try:
                     self._closing_interface = True
-                    self.interface.close()
+                    old_interface.close()
                 except (ConnectionError, OSError) as e:
                     logger.warning(f"Error closing interface during reconnect: {e}")
-                    # close() failed partway — the library's _sendDisconnect()
-                    # raised before TCPInterface could clean up the socket and
-                    # signal the reader thread.  Do it manually so the device
-                    # doesn't keep a zombie connection that eats a client slot.
+                    # close() failed partway — force cleanup so the ESP32
+                    # doesn't keep a zombie connection eating a client slot.
                     try:
-                        self.interface._wantExit = True
-                        if self.interface.socket:
-                            self.interface.socket.close()
-                            self.interface.socket = None
+                        old_interface._wantExit = True
+                        if old_interface.socket:
+                            old_interface.socket.close()
+                            old_interface.socket = None
                     except Exception:
                         pass
                 finally:
                     self._closing_interface = False
 
-            # Give the device time to tear down the old connection before
-            # we open a new one (ESP32 has very few client slots).
-            time.sleep(1)
+                # Wait for the old reader thread to fully exit before opening
+                # a new connection — avoids two sockets to the ESP32 at once.
+                try:
+                    if hasattr(old_interface, '_rxThread') and old_interface._rxThread.is_alive():
+                        old_interface._rxThread.join(timeout=5)
+                except Exception:
+                    pass
+
+            # Give the device time to release the TCP slot.
+            time.sleep(2)
 
             if self._reconnect_interface():
                 with self.lock:
                     self.reconnect_count += 1
                 logger.info("Mesh link reacquired")
-                self._start_keepalive()
+                # self._start_keepalive()  # disabled — sendHeartbeat aggravates firmware TCP bug
                 time.sleep(2)  # Let connection stabilize before sending
                 return True
 
@@ -2458,7 +2461,7 @@ class MeshmindBot:
         self._periodic_thread = threading.Thread(target=self._periodic_tasks, daemon=True)
         self._periodic_thread.start()
 
-        self._start_keepalive()
+        # self._start_keepalive()  # disabled — sendHeartbeat aggravates firmware TCP bug
 
         logger.info("All systems online — MeshMind operational")
         self._notify_status_change()

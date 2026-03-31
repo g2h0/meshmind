@@ -71,8 +71,6 @@ class MeshmindBot:
         self.reconnect_count = 0
         self._reconnect_lock = threading.Lock()
         self._closing_interface = False
-        self._keepalive_stop = threading.Event()
-        self._keepalive_thread: Optional[threading.Thread] = None
         self._recent_reconnects: deque = deque(maxlen=10)
 
         # Caching for API responses
@@ -579,6 +577,12 @@ class MeshmindBot:
             if self.interface.socket:
                 self._configure_socket(self.interface.socket)
 
+            # Cancel the library's 300s heartbeat — sendHeartbeat() causes
+            # the ESP32 to RST the TCP connection after device reboots.
+            if self.interface.heartbeatTimer:
+                self.interface.heartbeatTimer.cancel()
+                self.interface.heartbeatTimer = None
+
             pub.subscribe(self.on_receive, "meshtastic.receive.text")
             pub.subscribe(self.on_node_discovered, "meshtastic.receive.nodeinfo")
             pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
@@ -619,6 +623,12 @@ class MeshmindBot:
             if self.interface.socket:
                 self._configure_socket(self.interface.socket)
 
+            # Cancel the library's 300s heartbeat — sendHeartbeat() causes
+            # the ESP32 to RST the TCP connection after device reboots.
+            if self.interface.heartbeatTimer:
+                self.interface.heartbeatTimer.cancel()
+                self.interface.heartbeatTimer = None
+
             if hasattr(self.interface, 'nodes') and self.interface.nodes:
                 with self.lock:
                     self.known_nodes = set(self.interface.nodes.keys())
@@ -639,37 +649,6 @@ class MeshmindBot:
             logger.error(f"Connection init failed: {e}")
             return False
 
-    def _start_keepalive(self):
-        """Send periodic heartbeats to keep the mesh connection alive.
-
-        30s interval keeps traffic flowing to prevent idle disconnects.
-        """
-        self._stop_keepalive()
-        self._keepalive_stop.clear()
-
-        def _loop():
-            while not self._keepalive_stop.wait(30):
-                try:
-                    iface = self.interface
-                    if (iface
-                            and hasattr(iface, "isConnected")
-                            and iface.isConnected.is_set()):
-                        iface.sendHeartbeat()
-                    else:
-                        logger.warning("Heartbeat skipped — interface not connected")
-                except Exception as e:
-                    logger.warning(f"Heartbeat send failed: {e}")
-
-        self._keepalive_thread = threading.Thread(
-            target=_loop, name="mesh-keepalive", daemon=True,
-        )
-        self._keepalive_thread.start()
-
-    def _stop_keepalive(self):
-        """Stop the keepalive timer."""
-        self._keepalive_stop.set()
-        self._keepalive_thread = None
-
     def _reconnect(self, blocking=True) -> bool:
         """Reconnect the mesh radio interface."""
         acquired = self._reconnect_lock.acquire(blocking=blocking)
@@ -684,8 +663,6 @@ class MeshmindBot:
                     and hasattr(self.interface, "isConnected")
                     and self.interface.isConnected.is_set()):
                 return True
-
-            self._stop_keepalive()
 
             self.retry_count += 1
             logger.warning(f"Mesh link recovery attempt {self.retry_count}/{cfg.MAX_RETRIES}")
@@ -725,7 +702,6 @@ class MeshmindBot:
                 with self.lock:
                     self.reconnect_count += 1
                 logger.info("Mesh link reacquired")
-                # self._start_keepalive()  # disabled — sendHeartbeat aggravates firmware TCP bug
                 time.sleep(2)  # Let connection stabilize before sending
                 return True
 
@@ -2461,8 +2437,6 @@ class MeshmindBot:
         self._periodic_thread = threading.Thread(target=self._periodic_tasks, daemon=True)
         self._periodic_thread.start()
 
-        # self._start_keepalive()  # disabled — sendHeartbeat aggravates firmware TCP bug
-
         logger.info("All systems online — MeshMind operational")
         self._notify_status_change()
         return True
@@ -2471,7 +2445,6 @@ class MeshmindBot:
         """Stop the bot"""
         logger.info("Initiating shutdown sequence...")
         self.is_running = False
-        self._stop_keepalive()
 
         if self._periodic_thread and self._periodic_thread.is_alive():
             self._periodic_thread.join(timeout=5)

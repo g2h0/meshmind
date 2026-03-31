@@ -577,12 +577,6 @@ class MeshmindBot:
             if self.interface.socket:
                 self._configure_socket(self.interface.socket)
 
-            # Cancel the library's 300s heartbeat — sendHeartbeat() causes
-            # the ESP32 to RST the TCP connection after device reboots.
-            if self.interface.heartbeatTimer:
-                self.interface.heartbeatTimer.cancel()
-                self.interface.heartbeatTimer = None
-
             pub.subscribe(self.on_receive, "meshtastic.receive.text")
             pub.subscribe(self.on_node_discovered, "meshtastic.receive.nodeinfo")
             pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
@@ -622,12 +616,6 @@ class MeshmindBot:
 
             if self.interface.socket:
                 self._configure_socket(self.interface.socket)
-
-            # Cancel the library's 300s heartbeat — sendHeartbeat() causes
-            # the ESP32 to RST the TCP connection after device reboots.
-            if self.interface.heartbeatTimer:
-                self.interface.heartbeatTimer.cancel()
-                self.interface.heartbeatTimer = None
 
             if hasattr(self.interface, 'nodes') and self.interface.nodes:
                 with self.lock:

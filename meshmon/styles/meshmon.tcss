@@ -1,0 +1,57 @@
+/* MESHMON TUI Styles */
+
+Screen {
+    background: $surface;
+}
+
+#main-content {
+    height: 1fr;
+}
+
+#service-panel {
+    width: 1fr;
+    min-width: 40;
+}
+
+
+/* DataTable styling */
+DataTable {
+    background: $background;
+    scrollbar-size: 0 0;
+}
+
+DataTable > .datatable--header {
+    background: $surface;
+    color: $accent;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary;
+    color: $background;
+}
+
+/* Sparkline styling */
+Sparkline {
+    height: 1;
+    padding: 0 1;
+    margin: 0;
+}
+
+.sparkline-label {
+    height: 1;
+    color: $text-muted;
+    text-align: center;
+    padding: 0;
+    margin: 0;
+}
+
+/* Footer */
+#footer-bar {
+    height: 1;
+    dock: bottom;
+    background: $surface;
+    border-top: solid $primary;
+    padding: 0 1;
+    color: $text-muted;
+}

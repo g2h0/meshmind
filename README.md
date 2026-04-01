@@ -144,6 +144,46 @@ MeshMind ships with 13 themes, switchable from the command palette:
 
 Tokyo Night, Nord, Gruvbox, Solarized Dark, Catppuccin Mocha, Dracula, Rose Pine, Osaka Jade, Synthwave 84, One Dark, Monokai, Material Ocean, Kanagawa
 
+## MeshMon
+
+MeshMon is a standalone service status monitor TUI that tracks the health of every API endpoint MeshMind depends on. It runs independently from the bot — no Meshtastic device or `.env` keys required — and gives you a live overview of NOAA Weather, NOAA Alerts, USGS Earthquakes, USGS River Gauge, Space Weather, Sunrise-Sunset, Tomorrow.io, AirNow, and MQTT broker connectivity.
+
+### Features
+
+- **Service table** — live HTTP status, response time, and health indicator for each endpoint
+- **Overview panel** — at-a-glance count of healthy / degraded / down services
+- **MQTT panel** — real-time Meshtastic MQTT traffic monitor
+- **Themes** — shares the same theme engine as MeshMind
+- **Auto-configuration** — on first run, imports location settings from your MeshMind `settings.json`
+
+### Run
+
+```
+pip install -r meshmon/requirements.txt   # if not already installed
+python meshmon.py
+```
+
+### Configuration
+
+MeshMon uses its own settings file at `meshmon/settings.json`, auto-created on first launch from `meshmon/settings.example.json` defaults (with location pulled from the parent MeshMind settings if available).
+
+| Setting                  | Description                                     | Default                  |
+| ------------------------ | ----------------------------------------------- | ------------------------ |
+| `theme`                  | Color theme                                     | `"tokyo-night"`          |
+| `check_interval`         | Seconds between service checks                  | `60`                     |
+| `http_timeout`           | HTTP request timeout (seconds)                  | `10`                     |
+| `degraded_threshold`     | Response time (seconds) to mark service degraded | `3.0`                   |
+| `lat` / `lon`            | Coordinates for location-based APIs             | `0.0`                    |
+| `noaa_zone`              | NOAA forecast zone                              | `""`                     |
+| `river_gauge_id`         | USGS gauge site number                          | `""`                     |
+| `aqi_distance_miles`     | Search radius for AQI stations                  | `25`                     |
+| `earthquake_min_magnitude` | Minimum magnitude for earthquake endpoint     | `4.0`                    |
+| `earthquake_radius_km`   | Search radius from your location (km)           | `500`                    |
+| `mqtt_enabled`           | Enable MQTT broker monitoring                   | `true`                   |
+| `mqtt_broker`            | MQTT broker hostname                            | `"mqtt.meshtastic.org"`  |
+| `mqtt_port`              | MQTT broker port                                | `1883`                   |
+| `mqtt_topic`             | MQTT topic filter                               | `"msh/#"`                |
+
 ## Built with
 
 | Project                                                    | Role                         |
@@ -164,7 +204,8 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ```
 assets/                  # Screenshots and images
-meshmind.py              # Entry point
+meshmind.py              # MeshMind entry point
+meshmon.py               # MeshMon entry point
 system_prompt.txt        # AI system prompt template
 settings.json            # User configuration (generated)
 requirements.txt         # Python dependencies
@@ -186,4 +227,21 @@ meshmind/
   utils/
     settings.py          # JSON settings persistence
     bbs.py               # BBS board logic and persistence
+meshmon/
+  app.py                 # Textual app, theme management, engine worker
+  config.py              # Settings persistence, service list builder
+  settings.example.json  # Example configuration
+  requirements.txt       # MeshMon-specific dependencies
+  monitors/
+    engine.py            # Background monitor engine
+    http_monitor.py      # HTTP endpoint health checker
+    mqtt_monitor.py      # MQTT broker connectivity monitor
+  styles/
+    meshmon.tcss         # Textual CSS layout
+  themes/                # Shared theme definitions
+  widgets/
+    overview_panel.py    # Service health summary
+    service_table.py     # Live service status table
+    mqtt_panel.py        # MQTT traffic panel
+    theme_picker.py      # Theme selection modal
 ```

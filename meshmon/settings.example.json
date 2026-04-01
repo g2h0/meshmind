@@ -1,0 +1,17 @@
+{
+  "theme": "tokyo-night",
+  "check_interval": 60,
+  "http_timeout": 10,
+  "degraded_threshold": 3.0,
+  "lat": 39.7817,
+  "lon": -89.6501,
+  "noaa_zone": "ILZ046",
+  "river_gauge_id": "",
+  "aqi_distance_miles": 25,
+  "earthquake_min_magnitude": 4.0,
+  "earthquake_radius_km": 500,
+  "mqtt_enabled": true,
+  "mqtt_broker": "mqtt.meshtastic.org",
+  "mqtt_port": 1883,
+  "mqtt_topic": "msh/#"
+}

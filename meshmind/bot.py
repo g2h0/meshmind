@@ -1862,7 +1862,11 @@ class MeshmindBot:
                 return
 
             data = resp.json()
-            if not data or len(data) < 2:
+
+            # API returns list of dicts: [{"time_tag":..., "Kp":..., ...}, ...]
+            # Filter out any header row (list) if present for backwards compat
+            entries = [e for e in data if isinstance(e, dict)]
+            if not entries:
                 logger.warning("NOAA space weather returned insufficient data")
                 self._record_api_call(success=False, response_time=time.time() - start_time, endpoint="noaa-space-weather")
                 return
@@ -1870,39 +1874,37 @@ class MeshmindBot:
             self._record_api_call(success=True, response_time=time.time() - start_time, endpoint="noaa-space-weather")
 
             with self.lock:
-                self.space_weather_cache["data"] = data
+                self.space_weather_cache["data"] = entries
                 self.space_weather_cache["timestamp"] = datetime.now(timezone.utc)
 
-            # Skip header row; only consider the most recent entry
-            # (avoids flooding alerts with historical data on first run)
             g_scale = {5: "G1", 6: "G2", 7: "G3", 8: "G4", 9: "G5"}
 
             # Only alert on the latest entry if it's new and Kp >= 5
-            latest = data[-1]
-            latest_tag = latest[0]
+            latest = entries[-1]
+            latest_tag = latest["time_tag"]
 
             with self.lock:
                 already_seen = latest_tag in self.seen_storm_events
                 first_run = self.last_space_weather_check is None
 
             # Mark all existing entries as seen (backfill)
-            for entry in data[1:]:
-                time_tag = entry[0]
+            for entry in entries:
+                time_tag = entry["time_tag"]
                 with self.lock:
                     if time_tag not in self.seen_storm_events:
                         self.seen_storm_events[time_tag] = datetime.now(timezone.utc)
             self._save_alert_state()
 
             if first_run:
-                logger.info(f"Heliophysics baseline captured — {len(data) - 1} K-index observations")
+                logger.info(f"Heliophysics baseline captured — {len(entries)} K-index observations")
                 return
 
             if already_seen:
                 return   # this observation was already alerted
 
             try:
-                kp = float(latest[1])
-            except (ValueError, TypeError, IndexError):
+                kp = float(latest["Kp"])
+            except (ValueError, TypeError, KeyError):
                 return
 
             if kp >= 5:

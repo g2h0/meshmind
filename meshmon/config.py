@@ -85,6 +85,8 @@ DEFAULT_SETTINGS = {
     "mqtt_broker": "mqtt.meshtastic.org",
     "mqtt_port": 1883,
     "mqtt_topic": "msh/#",
+    "mqtt_username": "meshdev",
+    "mqtt_password": "large4cats",
 }
 
 
@@ -193,6 +195,14 @@ class Settings:
     @property
     def mqtt_topic(self) -> str:
         return self.get("mqtt_topic", "msh/#")
+
+    @property
+    def mqtt_username(self) -> str:
+        return self.get("mqtt_username", "meshdev")
+
+    @property
+    def mqtt_password(self) -> str:
+        return self.get("mqtt_password", "large4cats")
 
     @property
     def services(self) -> list:

@@ -13,5 +13,7 @@
   "mqtt_enabled": true,
   "mqtt_broker": "mqtt.meshtastic.org",
   "mqtt_port": 1883,
-  "mqtt_topic": "msh/#"
+  "mqtt_topic": "msh/#",
+  "mqtt_username": "meshdev",
+  "mqtt_password": "large4cats"
 }

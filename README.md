@@ -183,6 +183,8 @@ MeshMon uses its own settings file at `meshmon/settings.json`, auto-created on f
 | `mqtt_broker`            | MQTT broker hostname                            | `"mqtt.meshtastic.org"`  |
 | `mqtt_port`              | MQTT broker port                                | `1883`                   |
 | `mqtt_topic`             | MQTT topic filter                               | `"msh/#"`                |
+| `mqtt_username`          | MQTT broker username                             | `"meshdev"`              |
+| `mqtt_password`          | MQTT broker password                             | `"large4cats"`           |
 
 ## Built with
 

@@ -54,6 +54,8 @@ class MonitorEngine:
                 broker=self._settings.mqtt_broker,
                 port=self._settings.mqtt_port,
                 topic=self._settings.mqtt_topic,
+                username=self._settings.mqtt_username,
+                password=self._settings.mqtt_password,
                 enabled=True,
             )
 

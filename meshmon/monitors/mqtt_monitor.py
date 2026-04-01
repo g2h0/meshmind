@@ -20,6 +20,8 @@ class MQTTMonitor(BaseMonitor):
         broker: str = "mqtt.meshtastic.org",
         port: int = 1883,
         topic: str = "msh/#",
+        username: str = "meshdev",
+        password: str = "large4cats",
         keepalive: int = 60,
         enabled: bool = True,
     ):
@@ -31,6 +33,8 @@ class MQTTMonitor(BaseMonitor):
         self.broker = broker
         self.port = port
         self.topic = topic
+        self.username = username
+        self.password = password
         self.keepalive = keepalive
 
         self._lock = threading.Lock()
@@ -74,7 +78,7 @@ class MQTTMonitor(BaseMonitor):
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=client_id,
         )
-        self._client.username_pw_set("meshdev", "large4cats")
+        self._client.username_pw_set(self.username, self.password)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message

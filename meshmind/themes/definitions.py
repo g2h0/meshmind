@@ -223,6 +223,108 @@ THEMES = {
             "msg_sent": "#ffa066",   # soft orange
         },
     },
+    "ethereal": {
+        "display_name": "Ethereal",
+        "colors": {
+            "primary": "#A78BFA",    # soft violet
+            "secondary": "#7DD3FC",  # sky blue
+            "accent": "#F0ABFC",     # pink orchid
+            "background": "#1B1B2F", # deep indigo
+            "surface": "#242440",
+            "error": "#FB7185",      # rose
+            "success": "#86EFAC",    # mint
+            "warning": "#FDE68A",    # soft gold
+            "text": "#E0DEF4",       # lavender white
+            "text_muted": "#6E6A8E",
+            "msg_received": "#7DD3FC",
+            "msg_sent": "#FDBA74",   # peach
+        },
+    },
+    "everforest": {
+        "display_name": "Everforest",
+        "colors": {
+            "primary": "#A7C080",    # green
+            "secondary": "#D699B6",  # purple/pink
+            "accent": "#7FBBB3",     # aqua
+            "background": "#2D353B",
+            "surface": "#343F44",
+            "error": "#E67E80",      # red
+            "success": "#A7C080",    # green
+            "warning": "#DBBC7F",    # yellow
+            "text": "#D3C6AA",       # warm beige
+            "text_muted": "#859289",
+            "msg_received": "#83C092",
+            "msg_sent": "#E69875",   # orange
+        },
+    },
+    "hackerman": {
+        "display_name": "Hackerman",
+        "colors": {
+            "primary": "#00FF41",    # matrix green
+            "secondary": "#00CC33",
+            "accent": "#39FF14",     # neon green
+            "background": "#0A0A0A",
+            "surface": "#141414",
+            "error": "#FF0040",
+            "success": "#00FF41",
+            "warning": "#CCFF00",    # yellow-green
+            "text": "#00FF41",
+            "text_muted": "#0D6B2E",
+            "msg_received": "#00FFAA",
+            "msg_sent": "#FFD700",   # gold
+        },
+    },
+    "vantablack": {
+        "display_name": "Vantablack",
+        "colors": {
+            "primary": "#A78BFA",    # violet
+            "secondary": "#60A5FA",  # blue
+            "accent": "#34D399",     # emerald
+            "background": "#000000", # true black
+            "surface": "#0A0A0A",
+            "error": "#F87171",      # red
+            "success": "#34D399",    # green
+            "warning": "#FBBF24",    # amber
+            "text": "#D0D0D0",
+            "text_muted": "#484848",
+            "msg_received": "#34D399",
+            "msg_sent": "#FB923C",   # orange
+        },
+    },
+    "flexoki-light": {
+        "display_name": "Flexoki Light",
+        "colors": {
+            "primary": "#205EA6",    # blue
+            "secondary": "#5E409D",  # purple
+            "accent": "#24837B",     # cyan
+            "background": "#FFFCF0", # paper
+            "surface": "#F2F0E5",    # paper-2
+            "error": "#AF3029",      # red
+            "success": "#66800B",    # green
+            "warning": "#AD8301",    # yellow
+            "text": "#100F0F",       # black
+            "text_muted": "#6F6E69", # tx-2
+            "msg_received": "#24837B",
+            "msg_sent": "#BC5215",   # orange
+        },
+    },
+    "solarized-light": {
+        "display_name": "Solarized Light",
+        "colors": {
+            "primary": "#268bd2",    # blue
+            "secondary": "#6c71c4",  # violet
+            "accent": "#2aa198",     # cyan
+            "background": "#fdf6e3", # base3
+            "surface": "#eee8d5",    # base2
+            "error": "#dc322f",      # red
+            "success": "#859900",    # green
+            "warning": "#b58900",    # yellow
+            "text": "#657b83",       # base00
+            "text_muted": "#93a1a1", # base1
+            "msg_received": "#2aa198",
+            "msg_sent": "#cb4b16",   # orange
+        },
+    },
 }
 
 

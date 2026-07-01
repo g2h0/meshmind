@@ -480,6 +480,10 @@ class MeshmindBot:
         )
         if conditions:
             sections.append(f"[Current Conditions]\n{conditions}")
+        else:
+            sections.append(
+                "[Current Conditions]\nNo live weather data available right now."
+            )
 
         # Active NOAA alerts
         alert_data = self.alerts_cache.get("data")
@@ -501,6 +505,7 @@ class MeshmindBot:
         # River level
         if cfg.RIVER_ENABLED:
             level_str = self.river_cache.get("level")
+            river_line = None
             if level_str is not None:
                 try:
                     level_ft = float(level_str)
@@ -511,11 +516,12 @@ class MeshmindBot:
                         stage = " (FLOOD STAGE)"
                     elif action and level_ft >= action:
                         stage = " (Action stage)"
-                    sections.append(
-                        f"[River: {cfg.RIVER_NAME}]\nLevel: {level_ft:.1f} ft{stage}"
-                    )
+                    river_line = f"Level: {level_ft:.1f} ft{stage}"
                 except (ValueError, TypeError):
-                    pass
+                    river_line = None
+            if river_line is None:
+                river_line = "No current river reading available."
+            sections.append(f"[River: {cfg.RIVER_NAME}]\n{river_line}")
 
         # AQI
         if cfg.AQI_ENABLED:
@@ -526,8 +532,12 @@ class MeshmindBot:
                 param = aqi_data.get("parameter", "")
                 line = f"AQI {aqi} ({cat})"
                 if param:
-                    line += f" — {param}"
+                    line += f" - {param}"
                 sections.append(f"[Air Quality]\n{line}")
+            else:
+                sections.append(
+                    "[Air Quality]\nNo current air quality data available."
+                )
 
         return "\n\n".join(sections)
 

@@ -88,6 +88,7 @@ class Config:
     ALERTS_CACHE_TTL = 600
     HOURLY_FORECAST_CACHE_TTL = 3600
     RIVER_CACHE_TTL = 1800
+    RIVER_REQUEST_MIN_INTERVAL = 600            # Anonymous USGS rate-limit guard
     AQI_CACHE_TTL = 14400                       # 4 hours
     AQI_CHECK_INTERVAL_SECONDS = 14400          # 4 hours
     SPACE_WEATHER_CACHE_TTL = 3600              # 1 hour
@@ -211,10 +212,16 @@ class Config:
     def _build_urls(self):
         """Build derived URLs from user-configured values"""
         if self.RIVER_GAUGE_ID:
+            monitoring_location_id = str(self.RIVER_GAUGE_ID).strip()
+            if monitoring_location_id.upper().startswith("USGS-"):
+                monitoring_location_id = f"USGS-{monitoring_location_id[5:]}"
+            else:
+                monitoring_location_id = f"USGS-{monitoring_location_id}"
             self.RIVER_API_URL = (
-                f"https://waterservices.usgs.gov/nwis/iv/?format=json"
-                f"&sites={self.RIVER_GAUGE_ID}"
-                f"&parameterCd=00065&siteStatus=all"
+                "https://api.waterdata.usgs.gov/ogcapi/v0/collections/"
+                "latest-continuous/items?f=json"
+                f"&monitoring_location_id={monitoring_location_id}"
+                "&parameter_code=00065&limit=10"
             )
         if self.AQI_ENABLED and self.AIRNOW_API_KEY and self.LAT and self.LON:
             self.AIRNOW_API_URL = (

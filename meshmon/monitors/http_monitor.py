@@ -28,6 +28,7 @@ class HTTPMonitor(BaseMonitor):
         requires_key: Optional[str] = None,
         dynamic_params: bool = False,
         check_interval: float = 60.0,
+        enforce_check_interval: bool = False,
     ):
         super().__init__(
             name=name,
@@ -39,6 +40,7 @@ class HTTPMonitor(BaseMonitor):
         self.degraded_threshold = degraded_threshold
         self.requires_key = requires_key
         self.dynamic_params = dynamic_params
+        self.enforce_check_interval = enforce_check_interval
 
         # Shared session with retry logic
         self._session = requests.Session()

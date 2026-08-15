@@ -27,6 +27,7 @@ from pubsub import pub
 from openai import OpenAI
 
 from .config import cfg, Config
+from .usgs import parse_latest_gage_height
 from .utils.bbs import BbsBoard, format_age
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,11 @@ class MeshmindBot:
         self._recent_reconnects: deque = deque(maxlen=10)
 
         # Caching for API responses
-        self.river_cache = {"level": None, "timestamp": None}
+        self.river_cache = {
+            "level": None,
+            "timestamp": None,
+            "last_attempt": None,
+        }
         self.weather_cache = {
             "tomorrow": {"data": None, "timestamp": None},
             "noaa": {"data": None, "timestamp": None},
@@ -134,14 +139,18 @@ class MeshmindBot:
         self._last_sun_attempt = None
         self._sun_consecutive_failures = 0
 
-        # HTTP session with retry on transient errors.  read=1 allows a single
-        # retry on read failures (covers stale keep-alive ConnectionResetError)
+        # HTTP session with retry on transient connection, read, and HTTP
+        # status failures. read=1 covers stale keep-alive ConnectionResetError
         # without compounding blocking on genuinely slow/down servers.
         _retry = Retry(
             total=3,
             connect=3,
             read=1,
+            status=3,
             backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+            respect_retry_after_header=True,
             raise_on_status=False,
         )
         _adapter = HTTPAdapter(max_retries=_retry)
@@ -439,7 +448,7 @@ class MeshmindBot:
             return
         try:
             self.interface.sendText(
-                text[:cfg.MAX_RESPONSE_LENGTH],
+                self._truncate_message(text),
                 destinationId=node_id,
                 channelIndex=channel,
                 wantAck=True,
@@ -845,6 +854,8 @@ class MeshmindBot:
             or not isinstance(packet["decoded"], dict)
             or "text" not in packet["decoded"]
             or "from" not in packet
+            or not isinstance(packet["decoded"]["text"], str)
+            or not isinstance(packet["from"], int)
         ):
             logger.error(f"Invalid packet structure received: {packet}")
             return
@@ -1170,7 +1181,7 @@ class MeshmindBot:
 
             return content[: cfg.MAX_RESPONSE_LENGTH * cfg.MAX_MESSAGE_PARTS]
 
-        except (ConnectionError, requests.RequestException, ValueError, TypeError, AttributeError, KeyError) as e:
+        except (ConnectionError, requests.RequestException, ValueError, TypeError, AttributeError, KeyError, IndexError) as e:
             logger.error(f"AI response error: {e}")
             self._record_api_call(success=False, response_time=time.time() - start_time, error=e, endpoint="ai")
             return "Processing error. Try again."
@@ -1715,17 +1726,26 @@ class MeshmindBot:
             logger.error(f"Frost check error: {e}")
 
     def _get_river_level(self) -> str:
-        """Get current river level from USGS gauge"""
+        """Get current river level from the USGS latest-continuous API."""
         if not cfg.RIVER_ENABLED or not cfg.RIVER_API_URL:
             return "N/A"
 
+        now_utc = datetime.now(timezone.utc)
         with self.lock:
             if (
                 self.river_cache["timestamp"]
-                and (datetime.now(timezone.utc) - self.river_cache["timestamp"]).total_seconds()
+                and (now_utc - self.river_cache["timestamp"]).total_seconds()
                 < cfg.RIVER_CACHE_TTL
             ):
                 return self.river_cache["level"]
+            if (
+                self.river_cache["last_attempt"]
+                and (now_utc - self.river_cache["last_attempt"]).total_seconds()
+                < cfg.RIVER_REQUEST_MIN_INTERVAL
+            ):
+                logger.debug("USGS river request suppressed by anonymous rate guard")
+                return "N/A"
+            self.river_cache["last_attempt"] = now_utc
 
         start_time = time.time()
         try:
@@ -1739,21 +1759,11 @@ class MeshmindBot:
             response_time = time.time() - start_time
             self._record_api_call(success=True, response_time=response_time, endpoint="usgs-river")
 
-            if "value" not in data or "timeSeries" not in data["value"]:
-                return "N/A"
-
-            time_series = data["value"]["timeSeries"]
-            if not time_series:
-                return "N/A"
-
-            values = time_series[0]["values"][0]["value"]
-            if not values:
-                return "N/A"
-
-            latest_reading = values[-1]
-            try:
-                level = float(latest_reading["value"])
-            except (ValueError, TypeError):
+            level = parse_latest_gage_height(data)
+            if level is None:
+                logger.warning(
+                    "USGS river response contained no valid gage-height reading"
+                )
                 return "N/A"
 
             level_str = f"{level:.1f}"

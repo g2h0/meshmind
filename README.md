@@ -103,7 +103,7 @@ cp .env.example .env
 | `ai_search_enabled`        | Enable AI web search (xAI/Grok only)                                           | `false`                 |
 | `bbs_enabled`              | Enable the shared BBS message board                                            | `true`                  |
 | `river_enabled`            | Enable USGS river monitoring                                                   | `false`                 |
-| `river_gauge_id`           | USGS gauge site number — [find yours here](https://waterdata.usgs.gov/nwis/rt) | `""`                    |
+| `river_gauge_id`           | USGS gauge site number — [find yours here](https://waterdata.usgs.gov/)         | `""`                    |
 | `river_name`               | Display name for the river                                                     | `""`                    |
 | `flood_stages`             | Flood stage thresholds (ft)                                                    | `{"action": 0, ...}`    |
 | `theme`                    | TUI color theme                                                                | `"tokyo-night"`         |
@@ -138,6 +138,16 @@ If `timezone` or `noaa_zone` are left empty, the bot will auto-derive them from 
 python meshmind.py
 ```
 
+## Testing
+
+The test suite is fully offline: Meshtastic hardware, external APIs, API keys, and live AI providers are mocked. Run all 50 focused tests with:
+
+```
+python -m unittest discover -s tests -v
+```
+
+GitHub Actions runs the same suite on Python 3.10 and 3.14 for every push and pull request. The checks cover UTF-8 message limits, packet and command handling, AI context and mocked output, alert escalation and duplicate suppression, BBS persistence, API fallbacks, USGS river parsing, and reconnect transitions.
+
 ## Themes
 
 MeshMind ships with 13 themes, switchable from the command palette:
@@ -155,6 +165,8 @@ MeshMon is a standalone service status monitor TUI that tracks the health of eve
 - **MQTT panel** — real-time Meshtastic MQTT traffic monitor
 - **Themes** — shares the same theme engine as MeshMind
 - **Auto-configuration** — on first run, imports location settings from your MeshMind `settings.json`
+
+The USGS River Gauge service uses the anonymous modern Water Data API and is checked every 10 minutes, regardless of the general `check_interval`. MeshMind also limits river requests after failures. Together these guards stay below the anonymous API rate limit, including retry headroom, without requiring an API key.
 
 ### Run
 
@@ -196,7 +208,7 @@ MeshMon uses its own settings file at `meshmon/settings.json`, auto-created on f
 | [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) | Local neural text-to-speech  |
 | [PyPubSub](https://github.com/schollii/pypubsub)           | Meshtastic event pub/sub     |
 
-**APIs:** [NOAA Weather](https://www.weather.gov/documentation/services-web-api), [USGS Water Services](https://waterservices.usgs.gov/), [Tomorrow.io](https://www.tomorrow.io/), [Sunrise-Sunset](https://sunrise-sunset.org/api), [AirNow](https://www.airnowapi.org/), [NOAA SWPC](https://www.swpc.noaa.gov/), [USGS Earthquake Hazards](https://earthquake.usgs.gov/fdsnws/event/1/)
+**APIs:** [NOAA Weather](https://www.weather.gov/documentation/services-web-api), [USGS Water Data](https://api.waterdata.usgs.gov/), [Tomorrow.io](https://www.tomorrow.io/), [Sunrise-Sunset](https://sunrise-sunset.org/api), [AirNow](https://www.airnowapi.org/), [NOAA SWPC](https://www.swpc.noaa.gov/), [USGS Earthquake Hazards](https://earthquake.usgs.gov/fdsnws/event/1/)
 
 ## License
 
@@ -205,6 +217,8 @@ MIT — see [LICENSE](LICENSE) for details.
 ## Project structure
 
 ```
+.github/
+  workflows/tests.yml     # Python 3.10/3.14 test workflow
 assets/                  # Screenshots and images
 meshmind.py              # MeshMind entry point
 meshmon.py               # MeshMon entry point
@@ -216,6 +230,7 @@ meshmind/
   app.py                 # Textual app, command palette, worker management
   bot.py                 # Meshtastic bot logic, commands, APIs, scheduling
   config.py              # Configuration dataclass, settings loader
+  usgs.py                # Modern USGS river response parsing
   tts.py                 # Text-to-speech engine (kokoro-onnx)
   themes/
     definitions.py       # Theme color palettes (13 themes)
@@ -246,4 +261,5 @@ meshmon/
     service_table.py     # Live service status table
     mqtt_panel.py        # MQTT traffic panel
     theme_picker.py      # Theme selection modal
+tests/                   # Offline unittest suite and shared test helpers
 ```

@@ -45,7 +45,8 @@ class MonitorEngine:
                 degraded_threshold=degraded,
                 requires_key=svc.get("requires_key"),
                 dynamic_params=svc.get("dynamic_params", False),
-                check_interval=interval,
+                check_interval=svc.get("check_interval", interval),
+                enforce_check_interval=svc.get("enforce_check_interval", False),
             )
             self._http_monitors.append(monitor)
 
@@ -103,7 +104,7 @@ class MonitorEngine:
                     continue
                 if i > 0:
                     time.sleep(1)
-                future = executor.submit(self._run_check, monitor)
+                executor.submit(self._run_check, monitor)
 
             # Then loop at configured interval
             while self._running:
@@ -119,7 +120,10 @@ class MonitorEngine:
                 # Run all HTTP checks in parallel
                 futures = []
                 for monitor in self._http_monitors:
-                    if monitor.enabled or monitor.status == ServiceStatus.UNKNOWN:
+                    if (
+                        (monitor.enabled or monitor.status == ServiceStatus.UNKNOWN)
+                        and self._is_monitor_due(monitor)
+                    ):
                         futures.append(
                             executor.submit(self._run_check, monitor)
                         )
@@ -149,6 +153,14 @@ class MonitorEngine:
         else:
             logger.error(f"{monitor.name}: {status_str}{error_str}")
 
+    @staticmethod
+    def _is_monitor_due(monitor: HTTPMonitor) -> bool:
+        """Return whether a monitor's service-specific interval has elapsed."""
+        if monitor.last_check is None:
+            return True
+        elapsed = (datetime.now(timezone.utc) - monitor.last_check).total_seconds()
+        return elapsed >= monitor.check_interval
+
     def refresh_all(self) -> None:
         """Trigger an immediate check of all services"""
         logger.info("Refreshing all services...")
@@ -157,10 +169,20 @@ class MonitorEngine:
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = []
                 for monitor in self._http_monitors:
-                    if monitor.enabled or monitor.status == ServiceStatus.UNKNOWN:
-                        futures.append(
-                            executor.submit(self._run_check, monitor)
+                    if not (monitor.enabled or monitor.status == ServiceStatus.UNKNOWN):
+                        continue
+                    if (
+                        monitor.enforce_check_interval
+                        and not self._is_monitor_due(monitor)
+                    ):
+                        logger.info(
+                            f"{monitor.name}: refresh skipped until its "
+                            f"{monitor.check_interval:.0f}s interval elapses"
                         )
+                        continue
+                    futures.append(
+                        executor.submit(self._run_check, monitor)
+                    )
                 if self._mqtt_monitor and self._mqtt_monitor.enabled:
                     result = self._mqtt_monitor.check()
                     self._mqtt_monitor.record_result(result)

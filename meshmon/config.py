@@ -1,7 +1,6 @@
 """MESHMON Configuration and Settings Persistence"""
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,6 +10,12 @@ def build_services(lat: float, lon: float, noaa_zone: str,
                    earthquake_min_magnitude: float = 4.0,
                    earthquake_radius_km: int = 500) -> list:
     """Build the service list dynamically from location settings"""
+    monitoring_location_id = str(river_gauge_id).strip()
+    if monitoring_location_id.upper().startswith("USGS-"):
+        monitoring_location_id = f"USGS-{monitoring_location_id[5:]}"
+    elif monitoring_location_id:
+        monitoring_location_id = f"USGS-{monitoring_location_id}"
+
     services = [
         {
             "name": "NOAA Weather",
@@ -36,8 +41,17 @@ def build_services(lat: float, lon: float, noaa_zone: str,
         },
         {
             "name": "USGS River Gauge",
-            "url": f"https://waterservices.usgs.gov/nwis/iv/?format=json&sites={river_gauge_id}&parameterCd=00065&siteStatus=all",
+            "url": (
+                "https://api.waterdata.usgs.gov/ogcapi/v0/collections/"
+                "latest-continuous/items?f=json"
+                f"&monitoring_location_id={monitoring_location_id}"
+                "&parameter_code=00065&limit=10"
+            ),
             "enabled": bool(river_gauge_id),
+            # Anonymous USGS access allows 50 requests/hour. Ten-minute
+            # checks leave headroom for retries and MeshMind on the same IP.
+            "check_interval": 600,
+            "enforce_check_interval": True,
         },
         {
             "name": "Space Weather",

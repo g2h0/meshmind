@@ -30,3 +30,6 @@ TODO.md
 # IDE / tools
 .claude/
 *.tmp*
+
+# macOS
+.DS_Store
